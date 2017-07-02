@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 public class ElasticsearchHttpClient
 {
@@ -195,10 +196,27 @@ public class ElasticsearchHttpClient
     {
         ObjectNode obj = (ObjectNode) record;
 
-        //  TODO write test
+        // remove index column from record
+        // TODO write test
         if (task.getIndexFields().orNull() != null) {
             for (String indexField : task.getIndexFields().orNull()) {
                 obj.remove(indexField);
+            }
+        }
+
+        // create nested request and remove invalid nested request
+        // TODO write test
+        Map<String, List<String>> nestedFields = task.getNestedFields().orNull();
+        if (nestedFields != null) {
+            Set<String> keys = nestedFields.keySet();
+            for (String key : keys) {
+                List<String> values = nestedFields.get(key);
+                Map<String, Object> bodies = new HashMap<>();
+                for (String value : values) {
+                    bodies.put(value, obj.get(key + "." + value));
+                    obj.remove(key + "." + value);
+                }
+                obj.putPOJO(key, bodies);
             }
         }
 

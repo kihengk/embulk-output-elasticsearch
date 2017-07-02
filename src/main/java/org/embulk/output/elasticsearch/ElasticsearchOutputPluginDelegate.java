@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class ElasticsearchOutputPluginDelegate
     implements RestClientOutputPluginDelegate<ElasticsearchOutputPluginDelegate.PluginTask>
@@ -68,6 +69,10 @@ public class ElasticsearchOutputPluginDelegate
         @Config("index_fields")
         @ConfigDefault("null")
         Optional<List<String>> getIndexFields();
+
+        @Config("nested_fields")
+        @ConfigDefault("null")
+        Optional<Map<String, List<String>>> getNestedFields();
 
         @Config("alias")
         @ConfigDefault("null")
