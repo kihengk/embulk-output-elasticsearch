@@ -3,6 +3,7 @@ package org.embulk.output.elasticsearch;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
 import org.eclipse.jetty.client.util.StringContentProvider;
@@ -42,8 +43,8 @@ public class ElasticsearchHttpClient
     // ALLOW_UNQUOTED_CONTROL_CHARS - Not expected but whether parser will allow JSON Strings to contain unquoted control characters
     // FAIL_ON_UNKNOWN_PROPERTIES - Feature that determines whether encountering of unknown properties
     private final ObjectMapper jsonMapper = new ObjectMapper()
-            .configure(com.fasterxml.jackson.core.JsonParser.Feature.ALLOW_UNQUOTED_CONTROL_CHARS, false)
-            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        .configure(com.fasterxml.jackson.core.JsonParser.Feature.ALLOW_UNQUOTED_CONTROL_CHARS, false)
+        .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     // Elasticsearch maximum index byte size
     // public static final int MAX_INDEX_NAME_BYTES = 255;
@@ -69,16 +70,15 @@ public class ElasticsearchHttpClient
         try {
             String path = String.format("/%s/%s/_bulk", task.getIndex(), task.getType());
             int recordSize = records.size();
-            String idColumn = task.getId().orNull();
             if (recordSize > 0) {
                 StringBuilder sb = new StringBuilder();
                 for (JsonNode record : records) {
-                    sb.append(createIndexRequest(idColumn, record));
+                    sb.append(createIndexRequest(task, record));
 
-                    String requestString = jsonMapper.writeValueAsString(record);
+                    String requestString = createRequest(task, record);
                     sb.append("\n")
-                            .append(requestString)
-                            .append("\n");
+                        .append(requestString)
+                        .append("\n");
                 }
                 sendRequest(path, HttpMethod.POST, task, sb.toString());
             }
@@ -191,23 +191,50 @@ public class ElasticsearchHttpClient
         }
     }
 
-    private String createIndexRequest(String idColumn, JsonNode record) throws JsonProcessingException
+    private String createRequest(PluginTask task, JsonNode record) throws JsonProcessingException
     {
+        ObjectNode obj = (ObjectNode) record;
+
+        //  TODO write test
+        if (task.getIndexFields().orNull() != null) {
+            for (String indexField : task.getIndexFields().orNull()) {
+                obj.remove(indexField);
+            }
+        }
+
+        return jsonMapper.writeValueAsString(obj);
+    }
+
+    private String createIndexRequest(PluginTask task, JsonNode record) throws JsonProcessingException
+    {
+        // {"index" : {"_id" : "v"}}
+        Map<String, Map> indexRequest = new HashMap<>();
+        Map<String, JsonNode> idRequest = new HashMap<>();
+        String idColumn = task.getId().orNull();
         // index name and type are set at path("/{index}/{type}"). So no need to set
         if (idColumn != null && record.hasNonNull(idColumn)) {
-            // {"index" : {"_id" : "v"}}
-            Map<String, Map> indexRequest = new HashMap<>();
-
-            Map<String, JsonNode> idRequest = new HashMap<>();
             idRequest.put("_id", record.get(idColumn));
-
-            indexRequest.put("index", idRequest);
-            return jsonMapper.writeValueAsString(indexRequest);
         }
-        else {
-            // {"index" : {}}
+
+        // index fields setting.
+        // If getIndexFields() have "_id" property,
+        // previous "_id" property set by idColumn will be overrided.
+        // TODO writing test
+        if (task.getIndexFields().orNull() != null) {
+            List<String> indexFields = task.getIndexFields().orNull();
+            for (String indexField : indexFields) {
+                idRequest.put(indexField, record.get(indexField));
+            }
+        }
+
+        if (idRequest.size() == 0) {
             return "{\"index\" : {}}";
         }
+        else {
+            indexRequest.put("index", idRequest);
+        }
+
+        return jsonMapper.writeValueAsString(indexRequest);
     }
 
     private void assignAlias(String indexName, String aliasName, PluginTask task)
@@ -319,44 +346,44 @@ public class ElasticsearchHttpClient
 
         try (Jetty92RetryHelper retryHelper = createRetryHelper(task)) {
             String responseBody = retryHelper.requestWithRetry(
-                    new StringJetty92ResponseEntityReader(task.getTimeoutMills()),
-                    new Jetty92SingleRequester() {
-                        @Override
-                        public void requestOnce(org.eclipse.jetty.client.HttpClient client, org.eclipse.jetty.client.api.Response.Listener responseListener)
-                        {
-                            org.eclipse.jetty.client.api.Request request = client
-                                    .newRequest(uri)
-                                    .accept("application/json")
-                                    .method(method);
-                            if (method == HttpMethod.POST) {
-                                request.content(new StringContentProvider(content), "application/json");
-                            }
-
-                            if (!authorizationHeader.isEmpty()) {
-                                request.header("Authorization", authorizationHeader);
-                            }
-                            request.send(responseListener);
+                new StringJetty92ResponseEntityReader(task.getTimeoutMills()),
+                new Jetty92SingleRequester() {
+                    @Override
+                    public void requestOnce(org.eclipse.jetty.client.HttpClient client, org.eclipse.jetty.client.api.Response.Listener responseListener)
+                    {
+                        org.eclipse.jetty.client.api.Request request = client
+                            .newRequest(uri)
+                            .accept("application/json")
+                            .method(method);
+                        if (method == HttpMethod.POST) {
+                            request.content(new StringContentProvider(content), "application/json");
                         }
 
-                        @Override
-                        public boolean isExceptionToRetry(Exception exception)
-                        {
-                            return task.getId().isPresent();
+                        if (!authorizationHeader.isEmpty()) {
+                            request.header("Authorization", authorizationHeader);
                         }
+                        request.send(responseListener);
+                    }
 
-                        @Override
-                        public boolean isResponseStatusToRetry(org.eclipse.jetty.client.api.Response response)
-                        {
-                            int status = response.getStatus();
-                            if (status == 404) {
-                                throw new ResourceNotFoundException("Requested resource was not found");
-                            }
-                            else if (status == 429) {
-                                return true;  // Retry if 429.
-                            }
-                            return status / 100 != 4;  // Retry unless 4xx except for 429.
+                    @Override
+                    public boolean isExceptionToRetry(Exception exception)
+                    {
+                        return task.getId().isPresent();
+                    }
+
+                    @Override
+                    public boolean isResponseStatusToRetry(org.eclipse.jetty.client.api.Response response)
+                    {
+                        int status = response.getStatus();
+                        if (status == 404) {
+                            throw new ResourceNotFoundException("Requested resource was not found");
                         }
-                    });
+                        else if (status == 429) {
+                            return true;  // Retry if 429.
+                        }
+                        return status / 100 != 4;  // Retry unless 4xx except for 429.
+                    }
+                });
             return parseJson(responseBody);
         }
     }
@@ -394,23 +421,23 @@ public class ElasticsearchHttpClient
     private Jetty92RetryHelper createRetryHelper(PluginTask task)
     {
         return new Jetty92RetryHelper(
-                task.getMaximumRetries(),
-                task.getInitialRetryIntervalMillis(),
-                task.getMaximumRetryIntervalMillis(),
-                new Jetty92ClientCreator() {
-                    @Override
-                    public org.eclipse.jetty.client.HttpClient createAndStart()
-                    {
-                        org.eclipse.jetty.client.HttpClient client = new org.eclipse.jetty.client.HttpClient(new SslContextFactory());
-                        try {
-                            client.start();
-                            return client;
-                        }
-                        catch (Exception e) {
-                            throw Throwables.propagate(e);
-                        }
+            task.getMaximumRetries(),
+            task.getInitialRetryIntervalMillis(),
+            task.getMaximumRetryIntervalMillis(),
+            new Jetty92ClientCreator() {
+                @Override
+                public org.eclipse.jetty.client.HttpClient createAndStart()
+                {
+                    org.eclipse.jetty.client.HttpClient client = new org.eclipse.jetty.client.HttpClient(new SslContextFactory());
+                    try {
+                        client.start();
+                        return client;
                     }
-                });
+                    catch (Exception e) {
+                        throw Throwables.propagate(e);
+                    }
+                }
+            });
     }
 
     @VisibleForTesting

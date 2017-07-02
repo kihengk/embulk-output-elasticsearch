@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Locale;
 
 public class ElasticsearchOutputPluginDelegate
-        implements RestClientOutputPluginDelegate<ElasticsearchOutputPluginDelegate.PluginTask>
+    implements RestClientOutputPluginDelegate<ElasticsearchOutputPluginDelegate.PluginTask>
 {
     private final Logger log;
     private final ElasticsearchHttpClient client;
@@ -37,7 +37,7 @@ public class ElasticsearchOutputPluginDelegate
     }
 
     public interface NodeAddressTask
-            extends Task
+        extends Task
     {
         @Config("host")
         String getHost();
@@ -48,7 +48,7 @@ public class ElasticsearchOutputPluginDelegate
     }
 
     public interface PluginTask
-            extends RestClientOutputTaskBase, TimestampFormatter.Task
+        extends RestClientOutputTaskBase, TimestampFormatter.Task
     {
         @Config("mode")
         @ConfigDefault("\"insert\"")
@@ -64,6 +64,10 @@ public class ElasticsearchOutputPluginDelegate
         @Config("index")
         String getIndex();
         void setIndex(String indexName);
+
+        @Config("index_fields")
+        @ConfigDefault("null")
+        Optional<List<String>> getIndexFields();
 
         @Config("alias")
         @ConfigDefault("null")
@@ -223,8 +227,8 @@ public class ElasticsearchOutputPluginDelegate
         TimestampFormatter formatter = new TimestampFormatter(task.getJRuby(), "%Y-%m-%dT%H:%M:%S.%3N%z", DateTimeZone.forID(task.getTimeZone()));
 
         return JacksonServiceRequestMapper.builder()
-                .add(new JacksonAllInObjectScope(formatter), new JacksonTopLevelValueLocator("record"))
-                .build();
+            .add(new JacksonAllInObjectScope(formatter), new JacksonTopLevelValueLocator("record"))
+            .build();
     }
 
     @Override  // Overridden from |RecordBufferBuildable|
