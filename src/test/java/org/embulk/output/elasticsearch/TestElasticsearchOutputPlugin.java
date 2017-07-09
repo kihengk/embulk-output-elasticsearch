@@ -160,7 +160,54 @@ public class TestElasticsearchOutputPlugin
         });
         TransactionalPageOutput output = plugin.open(task.dump(), schema, 0);
 
-        List<Page> pages = PageTestUtils.buildPage(runtime.getBufferAllocator(), schema, 1L, 32864L, Timestamp.ofEpochSecond(1422386629), Timestamp.ofEpochSecond(1422316800),  true, 123.45, "embulk");
+        List<Page> pages = PageTestUtils.buildPage(runtime.getBufferAllocator(), schema, 1L, null, null, 32864L, Timestamp.ofEpochSecond(1422386629), Timestamp.ofEpochSecond(1422316800),  true, 123.45, "embulk");
+        assertThat(pages.size(), is(1));
+        for (Page page : pages) {
+            output.add(page);
+        }
+
+        output.finish();
+        output.commit();
+        Thread.sleep(1500); // Need to wait until index done
+
+        ElasticsearchHttpClient client = new ElasticsearchHttpClient();
+        Method sendRequest = ElasticsearchHttpClient.class.getDeclaredMethod("sendRequest", String.class, HttpMethod.class, PluginTask.class, String.class);
+        sendRequest.setAccessible(true);
+        String path = String.format("/%s/%s/_search", ES_INDEX, ES_INDEX_TYPE);
+        String sort = "{\"sort\" : \"id\"}";
+        JsonNode response = (JsonNode) sendRequest.invoke(client, path, HttpMethod.POST, task, sort);
+        assertThat(response.get("hits").get("total").asInt(), is(1));
+        if (response.size() > 0) {
+            JsonNode record = response.get("hits").get("hits").get(0).get("_source");
+            JsonNode index = response.get("hits").get("hits").get(0).get("_id");
+            assertThat(record.get("id").asInt(), is(1));
+            assertThat(index.asInt(), is(record.get("id").asInt()));
+            assertThat(record.get("account").asInt(), is(32864));
+            assertThat(record.get("time").asText(), is("2015-01-27T19:23:49.000+0000"));
+            assertThat(record.get("purchase").asText(), is("2015-01-27T00:00:00.000+0000"));
+            assertThat(record.get("flg").asBoolean(), is(true));
+            assertThat(record.get("score").asDouble(), is(123.45));
+            assertThat(record.get("comment").asText(), is("embulk"));
+        }
+    }
+
+    // TODO resolve duplicate code
+    @Test
+    public void testNestedFieldsOutputByOpen() throws Exception
+    {
+        ConfigSource config = utils.nestedFieldsTestConfig();
+        Schema schema = config.getNested("parser").loadConfig(CsvParserPlugin.PluginTask.class).getSchemaConfig().toSchema();
+        PluginTask task = config.loadConfig(PluginTask.class);
+        plugin.transaction(config, schema, 0, new OutputPlugin.Control() {
+            @Override
+            public List<TaskReport> run(TaskSource taskSource)
+            {
+                return Lists.newArrayList(Exec.newTaskReport());
+            }
+        });
+        TransactionalPageOutput output = plugin.open(task.dump(), schema, 0);
+
+        List<Page> pages = PageTestUtils.buildPage(runtime.getBufferAllocator(), schema, 1L, null, "autocomplete.input", 32864L, Timestamp.ofEpochSecond(1422386629), Timestamp.ofEpochSecond(1422316800),  true, 123.45, "embulk");
         assertThat(pages.size(), is(1));
         for (Page page : pages) {
             output.add(page);
@@ -180,6 +227,53 @@ public class TestElasticsearchOutputPlugin
         if (response.size() > 0) {
             JsonNode record = response.get("hits").get("hits").get(0).get("_source");
             assertThat(record.get("id").asInt(), is(1));
+            assertThat(record.get("autocomplete").get("input").asText(), is("autocomplete.input"));
+            assertThat(record.get("account").asInt(), is(32864));
+            assertThat(record.get("time").asText(), is("2015-01-27T19:23:49.000+0000"));
+            assertThat(record.get("purchase").asText(), is("2015-01-27T00:00:00.000+0000"));
+            assertThat(record.get("flg").asBoolean(), is(true));
+            assertThat(record.get("score").asDouble(), is(123.45));
+            assertThat(record.get("comment").asText(), is("embulk"));
+        }
+    }
+
+    @Test
+    public void testOverridedIdOutputByOpen() throws Exception
+    {
+        ConfigSource config = utils.overridedIDConfig();
+        Schema schema = config.getNested("parser").loadConfig(CsvParserPlugin.PluginTask.class).getSchemaConfig().toSchema();
+        PluginTask task = config.loadConfig(PluginTask.class);
+        plugin.transaction(config, schema, 0, new OutputPlugin.Control() {
+            @Override
+            public List<TaskReport> run(TaskSource taskSource)
+            {
+                return Lists.newArrayList(Exec.newTaskReport());
+            }
+        });
+        TransactionalPageOutput output = plugin.open(task.dump(), schema, 0);
+
+        List<Page> pages = PageTestUtils.buildPage(runtime.getBufferAllocator(), schema, 1L, "overrided_id", null, 32864L, Timestamp.ofEpochSecond(1422386629), Timestamp.ofEpochSecond(1422316800),  true, 123.45, "embulk");
+        assertThat(pages.size(), is(1));
+        for (Page page : pages) {
+            output.add(page);
+        }
+
+        output.finish();
+        output.commit();
+        Thread.sleep(1500); // Need to wait until index done
+
+        ElasticsearchHttpClient client = new ElasticsearchHttpClient();
+        Method sendRequest = ElasticsearchHttpClient.class.getDeclaredMethod("sendRequest", String.class, HttpMethod.class, PluginTask.class, String.class);
+        sendRequest.setAccessible(true);
+        String path = String.format("/%s/%s/_search", ES_INDEX, ES_INDEX_TYPE);
+        String sort = "{\"sort\" : \"id\"}";
+        JsonNode response = (JsonNode) sendRequest.invoke(client, path, HttpMethod.POST, task, sort);
+        assertThat(response.get("hits").get("total").asInt(), is(1));
+        if (response.size() > 0) {
+            JsonNode record = response.get("hits").get("hits").get(0).get("_source");
+            JsonNode index = response.get("hits").get("hits").get(0).get("_id");
+            assertThat(record.get("id").asInt(), is(1));
+            assertThat(index.asText(), is("overrided_id"));
             assertThat(record.get("account").asInt(), is(32864));
             assertThat(record.get("time").asText(), is("2015-01-27T19:23:49.000+0000"));
             assertThat(record.get("purchase").asText(), is("2015-01-27T00:00:00.000+0000"));

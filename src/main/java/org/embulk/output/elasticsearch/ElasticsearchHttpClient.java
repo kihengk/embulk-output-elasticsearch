@@ -197,7 +197,6 @@ public class ElasticsearchHttpClient
         ObjectNode obj = (ObjectNode) record;
 
         // remove index column from record
-        // TODO write test
         if (task.getIndexFields().orNull() != null) {
             for (String indexField : task.getIndexFields().orNull()) {
                 obj.remove(indexField);
@@ -205,7 +204,6 @@ public class ElasticsearchHttpClient
         }
 
         // create nested request and remove invalid nested request
-        // TODO write test
         Map<String, List<String>> nestedFields = task.getNestedFields().orNull();
         if (nestedFields != null) {
             Set<String> keys = nestedFields.keySet();

@@ -7,8 +7,7 @@ import org.embulk.output.elasticsearch.ElasticsearchOutputPluginDelegate.PluginT
 import org.embulk.spi.Exec;
 
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 import static org.junit.Assume.assumeNotNull;
 
@@ -26,6 +25,8 @@ public class ElasticsearchTestUtils
     public static String PATH_PREFIX;
     public static String ES_INDEX2;
     public static String ES_ALIAS;
+    public static List<String> ES_INDEX_FIELDS;
+    public static Map<String, List<String>> ES_NESTED_FIELDS;
 
     /*
      * This test case requires environment variables
@@ -46,6 +47,18 @@ public class ElasticsearchTestUtils
         ES_BULK_ACTIONS = System.getenv("ES_BULK_ACTIONS") != null ? Integer.valueOf(System.getenv("ES_BULK_ACTIONS")) : 1000;
         ES_BULK_SIZE = System.getenv("ES_BULK_SIZE") != null ? Integer.valueOf(System.getenv("ES_BULK_SIZE")) : 5242880;
         ES_CONCURRENT_REQUESTS = System.getenv("ES_CONCURRENT_REQUESTS") != null ? Integer.valueOf(System.getenv("ES_CONCURRENT_REQUESTS")) : 5;
+
+        // index fields
+        List<String> indexFields = new ArrayList<>();
+        indexFields.add("_id");
+        ES_INDEX_FIELDS =  indexFields;
+
+        // nested fields
+        Map<String, List<String>> nestedFields = new HashMap<>();
+        List<String> nestedValues = new ArrayList<>();
+        nestedValues.add("input");
+        nestedFields.put("autocomplete", nestedValues);
+        ES_NESTED_FIELDS = nestedFields;
 
         assumeNotNull(ES_HOST, ES_INDEX, ES_INDEX_TYPE);
 
@@ -92,6 +105,16 @@ public class ElasticsearchTestUtils
                 .set("maximum_retries", 2);
     }
 
+    public ConfigSource overridedIDConfig(){
+        return config()
+                .set("index_fields", ES_INDEX_FIELDS);
+    }
+
+    public ConfigSource nestedFieldsTestConfig(){
+        return config()
+                .set("nested_fields", ES_NESTED_FIELDS);
+    }
+
     public ImmutableMap<String, Object> inputConfig()
     {
         ImmutableMap.Builder<String, Object> builder = new ImmutableMap.Builder<>();
@@ -121,6 +144,8 @@ public class ElasticsearchTestUtils
     {
         ImmutableList.Builder<Object> builder = new ImmutableList.Builder<>();
         builder.add(ImmutableMap.of("name", "id", "type", "long"));
+        builder.add(ImmutableMap.of("name", "_id", "type", "string"));
+        builder.add(ImmutableMap.of("name", "autocomplete.input", "type", "string"));
         builder.add(ImmutableMap.of("name", "account", "type", "long"));
         builder.add(ImmutableMap.of("name", "time", "type", "timestamp", "format", "%Y-%m-%d %H:%M:%S"));
         builder.add(ImmutableMap.of("name", "purchase", "type", "timestamp", "format", "%Y%m%d"));
