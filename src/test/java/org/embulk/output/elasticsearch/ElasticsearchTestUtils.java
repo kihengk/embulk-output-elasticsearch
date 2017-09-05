@@ -105,12 +105,14 @@ public class ElasticsearchTestUtils
                 .set("maximum_retries", 2);
     }
 
-    public ConfigSource overridedIDConfig(){
+    public ConfigSource overridedIDConfig()
+    {
         return config()
                 .set("index_fields", ES_INDEX_FIELDS);
     }
 
-    public ConfigSource nestedFieldsTestConfig(){
+    public ConfigSource nestedFieldsTestConfig()
+    {
         return config()
                 .set("nested_fields", ES_NESTED_FIELDS);
     }
