@@ -84,7 +84,7 @@ public class ElasticsearchHttpClient
                 sendRequest(path, HttpMethod.POST, task, sb.toString());
             }
         }
-        catch (JsonProcessingException ex) {
+        catch (IOException ex) {
             throw new DataException(ex);
         }
     }
@@ -192,7 +192,7 @@ public class ElasticsearchHttpClient
         }
     }
 
-    private String createRequest(PluginTask task, JsonNode record) throws JsonProcessingException
+    private String createRequest(PluginTask task, JsonNode record) throws IOException
     {
         ObjectNode obj = (ObjectNode) record;
 
@@ -200,6 +200,19 @@ public class ElasticsearchHttpClient
         if (task.getIndexFields().orNull() != null) {
             for (String indexField : task.getIndexFields().orNull()) {
                 obj.remove(indexField);
+            }
+        }
+
+
+        // convert json_array_fields string to pojo
+        if (task.getJsonArrayFields().orNull() != null) {
+            for (String jsonArrayField : task.getJsonArrayFields().orNull()) {
+                String json = obj.get(jsonArrayField).textValue();
+
+                List arr = jsonMapper.readValue(json, List.class);
+
+                obj.putPOJO(jsonArrayField, arr);
+
             }
         }
 

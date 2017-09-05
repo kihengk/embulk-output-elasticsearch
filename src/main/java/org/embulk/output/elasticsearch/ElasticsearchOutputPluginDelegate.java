@@ -74,6 +74,10 @@ public class ElasticsearchOutputPluginDelegate
         @ConfigDefault("null")
         Optional<Map<String, List<String>>> getNestedFields();
 
+        @Config("json_array_fields")
+        @ConfigDefault("null")
+        Optional<List<String>> getJsonArrayFields();
+
         @Config("alias")
         @ConfigDefault("null")
         Optional<String> getAlias();
